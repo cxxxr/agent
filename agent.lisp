@@ -52,6 +52,17 @@ Use this tool when the agent must examine or process data stored on disk."
   (let ((text (uiop:read-file-string file)))
     text))
 
+(define-tool "list" ((path :type "string" :description "directory path"))
+    "Lists files and directories in the specified path.
+Given a directory path, this tool returns a list of entries (files and subdirectories).
+Use this tool when the agent needs to explore directory contents or find files."
+  (unless (uiop:directory-exists-p path)
+    (return (hash :error (format nil "Directory ~A was not found" path))))
+  (let* ((dir (uiop:ensure-directory-pathname path))
+         (entries (append (uiop:subdirectories dir)
+                          (uiop:directory-files dir))))
+    (mapcar #'namestring entries)))
+
 (defun gen-tools ()
   (let ((tools '()))
     (maphash 
