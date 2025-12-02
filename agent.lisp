@@ -85,7 +85,7 @@ Use this tool when the agent needs to explore directory contents or find files."
                                                              :test 'equal))))
                                                              
              tools))
-           *tools*)
+     *tools*)
     (coerce tools 'vector)))
 
 ;;;
@@ -168,11 +168,11 @@ Use this tool when the agent needs to explore directory contents or find files."
   (alexandria:nconcf (session-messages session)
                      messages))
 
-(defmethod process-response ((session session) response process-fn)
+(defmethod process-response ((session session) response)
   (let ((messages (loop :for message := (read-response response)
                         :while message
                         :collect message
-                        :when (funcall process-fn message)
+                        :when (process-message message)
                         :append :it)))
     (append-messages session messages)
     messages))
@@ -182,7 +182,7 @@ Use this tool when the agent needs to explore directory contents or find files."
                    (list (make-message :role "user"
                                        :content content)))
   (let ((response (chat-request (session-messages session))))
-    (process-response session response #'process-message)
+    (process-response session response)
     nil))
 
 ;;; usage
