@@ -168,6 +168,9 @@ Use this tool when the agent needs to explore directory contents or find files."
   (alexandria:nconcf (session-messages session)
                      messages))
 
+(defun has-tool-calls-p (messages)
+  (some #'message-tool-calls messages))
+
 (defmethod process-response ((session session) response)
   (let ((messages (loop :for message := (read-response response)
                         :while message
@@ -181,9 +184,11 @@ Use this tool when the agent needs to explore directory contents or find files."
   (append-messages session
                    (list (make-message :role "user"
                                        :content content)))
-  (let ((response (chat-request (session-messages session))))
-    (process-response session response)
-    nil))
+  (loop
+    (let* ((response (chat-request (session-messages session)))
+           (messages (process-response session response)))
+      (unless (has-tool-calls-p messages)
+        (return nil)))))
 
 ;;; usage
 (eval-when ()
