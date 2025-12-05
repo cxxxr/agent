@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "cl-mcp": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "-c",
+        "import socket,sys,threading;s=socket.socket();s.connect(('127.0.0.1',12345));threading.Thread(target=lambda:[print(l,end='',flush=True)for l in iter(lambda:s.recv(4096).decode(),'')],daemon=True).start();[s.send((l).encode())for l in sys.stdin]"
+      ],
+      "env": {}
+    }
+  }
+}

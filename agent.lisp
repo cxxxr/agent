@@ -114,7 +114,7 @@ Use this tool when the agent needs to explore directory contents or find files."
 
 (defun chat-request (messages)
   (let ((stream
-          (dex:post "http://100.80.52.3:11435/api/chat"
+          (dex:post "http://localhost:11434/api/chat"
                     :read-timeout nil
                     :connect-timeout nil
                     :want-stream t
@@ -122,7 +122,7 @@ Use this tool when the agent needs to explore directory contents or find files."
                     :headers '(("Content-Type" . "application/json"))
                     :content (with-output-to-string (out)
                                (yason:encode-alist
-                                `(("model" . "qwen3-coder")
+                                `(("model" . "qwen3:32b")
                                   ("messages" . ,(map 'vector
                                                       #'message-to-hash
                                                       messages))

@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "cl-mcp": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1764682898,
+        "narHash": "sha256-UmS9ox9CHFS2+veA+OOjvEhaBE2RPuovG61WYkbFp1k=",
+        "owner": "cl-ai-project",
+        "repo": "cl-mcp",
+        "rev": "0505552fb1eefb19a8e24f1a36d83e0db5ec995b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cl-ai-project",
+        "repo": "cl-mcp",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -20,11 +36,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1764517877,
-        "narHash": "sha256-pp3uT4hHijIC8JUK5MEqeAWmParJrgBVzHLNfJDZxg4=",
+        "lastModified": 1764667669,
+        "narHash": "sha256-7WUCZfmqLAssbDqwg9cUDAXrSoXN79eEEq17qhTNM/Y=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "2d293cbfa5a793b4c50d17c05ef9e385b90edf6c",
+        "rev": "418468ac9527e799809c900eda37cbff999199b6",
         "type": "github"
       },
       "original": {
@@ -36,6 +52,7 @@
     },
     "root": {
       "inputs": {
+        "cl-mcp": "cl-mcp",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs"
       }

@@ -4,9 +4,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    cl-mcp = {
+      url = "github:cl-ai-project/cl-mcp";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, cl-mcp }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
@@ -35,7 +39,7 @@
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.openssl ];
 
           shellHook = ''
-            export CL_SOURCE_REGISTRY="$PWD//"
+            export CL_SOURCE_REGISTRY="$PWD//:${cl-mcp}//"
             export QUICKLISP_HOME="$HOME/.quicklisp"
 
             # Auto-install Quicklisp if not present
