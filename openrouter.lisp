@@ -1,3 +1,52 @@
+;;;; agent/openrouter.lisp - OpenRouter API client with tool calling support
+
+#|
+Usage:
+
+1. Setup - Set your API key:
+
+(setf agent/openrouter:*api-key* "your-api-key")
+;; Or set OPENROUTER_API_KEY environment variable before loading
+
+2. Simple chat completion:
+
+(agent/openrouter:get-response-content
+  (agent/openrouter:chat-completion
+    (list (agent/openrouter:make-message :user "Hello!"))))
+
+3. Single-turn agent with tool calling:
+
+(agent/openrouter:run-agent "Read /path/to/file and summarize it")
+;; Uses built-in read_file tool by default
+
+4. Multi-turn conversation:
+
+(defvar *conv* (agent/openrouter:make-conversation
+                 :system-prompt "You are a helpful assistant."))
+
+(agent/openrouter:conversation-chat *conv* "What is 2 + 2?")
+;; => "4"
+
+(agent/openrouter:conversation-chat *conv* "Multiply that by 3")
+;; => "12" (remembers previous context)
+
+5. Custom tools:
+
+(defun make-my-tool ()
+  (agent/openrouter:make-function-tool
+    "my_tool"
+    "Description of my tool"
+    <json-schema-hash-table>))
+
+(defun my-executor (name args)
+  (cond ((string= name "my_tool") (do-something args))
+        (t nil)))
+
+(agent/openrouter:run-agent "Use my tool"
+  :tools (list (make-my-tool))
+  :tool-executor #'my-executor)
+|#
+
 (defpackage :agent/openrouter
   (:use :cl)
   (:export #:*api-key*
