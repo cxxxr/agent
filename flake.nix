@@ -27,6 +27,7 @@
             # Development tools
             rlwrap                  # readline wrapper for REPL
             curl                    # for downloading quicklisp
+            python3                 # for MCP stdio bridge
 
             # Native libraries
             openssl

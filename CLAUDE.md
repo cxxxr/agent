@@ -52,6 +52,74 @@ Key exports:
 
 Set API key via `*api-key*` or `OPENROUTER_API_KEY` environment variable.
 
-## MCP Integration
+## MCP Integration (cl-mcp)
 
-The `.mcp.json` configures a cl-mcp server that connects to `127.0.0.1:12345` via stdio bridge.
+This project uses [cl-mcp](https://github.com/cl-ai-project/cl-mcp) to enable Claude Code to interact with a running Common Lisp REPL.
+
+### Prerequisites
+
+1. cl-mcp is included via `flake.nix` and registered in `CL_SOURCE_REGISTRY`
+2. Python3 is available (provided by nix develop)
+
+### Setup Steps
+
+#### 1. Start the cl-mcp TCP server
+
+In a terminal with `nix develop`:
+
+```lisp
+sbcl --eval '(ql:quickload :cl-mcp)' \
+     --eval '(cl-mcp:start-tcp-server-thread :port 12345)'
+```
+
+Or from within a running SBCL session:
+
+```lisp
+(ql:quickload :cl-mcp)
+(cl-mcp:start-tcp-server-thread :port 12345)
+```
+
+#### 2. Register the MCP server with Claude Code
+
+```bash
+claude mcp add --scope local --transport stdio cl-mcp -- \
+  python3 /nix/store/b031ih2vwwigflajhx9s3l5fciq33aa6-source/scripts/stdio_tcp_bridge.py \
+  --host 127.0.0.1 --port 12345
+```
+
+Note: The nix store path may change after `nix flake update`. Find the current path with:
+
+```bash
+nix flake archive --json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('inputs',{}).get('cl-mcp',{}).get('path',''))"
+```
+
+#### 3. Restart Claude Code
+
+After adding the MCP server, restart Claude Code for the changes to take effect.
+
+#### 4. Verify connection
+
+```bash
+claude mcp list
+```
+
+Should show: `cl-mcp: ... - ✓ Connected`
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `repl-eval` | Execute Lisp forms and capture output |
+| `fs-read-file` | Read files in project/ASDF paths |
+| `fs-write-file` | Write files under project root |
+| `fs-list-directory` | List directory contents |
+| `lisp-read-file` | Smart Lisp viewer with collapse/expand |
+| `code-find` | Locate symbol definitions (sb-introspect) |
+| `code-describe` | Get symbol metadata and documentation |
+| `check-parens` | Validate balanced parentheses |
+
+### Troubleshooting
+
+- **Connection refused**: Ensure cl-mcp server is running on port 12345
+- **Path permission errors**: cl-mcp restricts file access to project root and ASDF system directories
+- **Server not recognized**: Run `claude mcp list` outside of Claude Code to verify registration
