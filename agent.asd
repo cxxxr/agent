@@ -5,4 +5,5 @@
                "cl-ansi-text"
                "com.inuoe.jzon")
   :serial t
-  :components ((:file "agent")))
+  :components ((:file "openrouter")
+               (:file "ollama")))

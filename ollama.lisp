@@ -1,6 +1,6 @@
-(defpackage #:agent
+(defpackage #:agent/ollama
   (:use #:cl))
-(in-package #:agent)
+(in-package #:agent/ollama)
 
 (defmethod print-object ((object hash-table) stream)
   (print-unreadable-object (object stream :type t)
