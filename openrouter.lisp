@@ -47,8 +47,8 @@ Usage:
   :tool-executor #'my-executor)
 |#
 
-(defpackage :agent/openrouter
-  (:use :cl)
+(defpackage #:agent/openrouter
+  (:use #:cl)
   (:export #:*api-key*
            #:*base-url*
            #:chat-completion
@@ -72,8 +72,7 @@ Usage:
            #:api-error
            #:api-error-status
            #:api-error-body))
-
-(in-package :agent/openrouter)
+(in-package #:agent/openrouter)
 
 ;;; Configuration
 
@@ -324,8 +323,9 @@ Returns the final text response from the model."
                     (name (tool-call-name tc))
                     (args (tool-call-arguments tc))
                     (result (funcall tool-executor name args)))
-               (setf messages (append messages (list (make-tool-message id (or result "Tool not found")))))))
-           )
+               (setf messages
+                     (append messages
+                             (list (make-tool-message id (or result "Tool not found"))))))))
           (otherwise
            (return (format nil "Unexpected finish reason: ~A"
                            (finish-reason response)))))))))
