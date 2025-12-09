@@ -442,7 +442,8 @@ The conversation history is updated in place."
   (let ((api-tools (when tools
                      (mapcar (lambda (tool)
                                (agent/llm/interface:tool-to-api-format backend tool))
-                             tools))))
+                             tools)))
+        (*api-key* (or (openrouter-backend-api-key backend) *api-key*)))
     (chat-completion messages
                      :model (agent/llm/interface:backend-model backend)
                      :tools api-tools)))
