@@ -65,7 +65,7 @@ Use this tool when the agent needs to explore directory contents or find files."
 
 (defun gen-tools ()
   (let ((tools '()))
-    (maphash 
+    (maphash
      (lambda (name tool)
        (assert (equal name (tool-name tool)))
        (push (hash :type "function"
@@ -77,13 +77,13 @@ Use this tool when the agent needs to explore directory contents or find files."
                                                                   (tool-arguments tool))
                                                 :properties (alexandria:alist-hash-table
                                                              (mapcar (lambda (parameter)
-                                                                       (cons (string-downcase
-                                                                              (first parameter))
-                                                                             (apply #'hash
-                                                                                    (rest parameter))))
+                                                                      (cons (string-downcase
+                                                                             (first parameter))
+                                                                            (apply #'hash
+                                                                                   (rest
+                                                                                    parameter))))
                                                                      (tool-parameters tool))
                                                              :test 'equal))))
-                                                             
              tools))
      *tools*)
     (coerce tools 'vector)))
