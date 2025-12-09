@@ -1,4 +1,4 @@
-;;;; agent/openrouter.lisp - OpenRouter API client with tool calling support
+;;;; agent/llm/openrouter.lisp - OpenRouter API client with tool calling support
 
 #|
 Usage:
@@ -47,7 +47,7 @@ Usage:
   :tool-executor #'my-executor)
 |#
 
-(defpackage #:agent/openrouter
+(defpackage #:agent/llm/openrouter
   (:use #:cl)
   (:export #:*api-key*
            #:*base-url*
@@ -77,7 +77,7 @@ Usage:
            #:api-error
            #:api-error-status
            #:api-error-body))
-(in-package #:agent/openrouter)
+(in-package #:agent/llm/openrouter)
 
 ;;; Configuration
 
@@ -406,7 +406,7 @@ The conversation history is updated in place."
 ;;; Interface Implementation (agent/interface protocol)
 ;;; ==========================================================================
 
-(defclass openrouter-backend (agent/interface:backend)
+(defclass openrouter-backend (agent/llm/interface:backend)
   ((api-key :initarg :api-key
             :accessor openrouter-backend-api-key
             :initform nil
@@ -420,65 +420,65 @@ The conversation history is updated in place."
 
 ;;; Message protocol implementation
 
-(defmethod agent/interface:make-user-message ((backend openrouter-backend) content)
+(defmethod agent/llm/interface:make-user-message ((backend openrouter-backend) content)
   (make-message :user content))
 
-(defmethod agent/interface:make-assistant-message ((backend openrouter-backend) content
+(defmethod agent/llm/interface:make-assistant-message ((backend openrouter-backend) content
                                                    &key tool-calls)
   (make-message :assistant content :tool-calls tool-calls))
 
-(defmethod agent/interface:make-system-message ((backend openrouter-backend) content)
+(defmethod agent/llm/interface:make-system-message ((backend openrouter-backend) content)
   (make-message :system content))
 
-(defmethod agent/interface:make-tool-result-message ((backend openrouter-backend)
+(defmethod agent/llm/interface:make-tool-result-message ((backend openrouter-backend)
                                                      tool-call-id result)
   (make-tool-message tool-call-id
                      (if (stringp result) result (com.inuoe.jzon:stringify result))))
 
 ;;; Backend protocol implementation
 
-(defmethod agent/interface:chat-completion ((backend openrouter-backend) messages
+(defmethod agent/llm/interface:chat-completion ((backend openrouter-backend) messages
                                             &key tools)
   (let ((api-tools (when tools
                      (mapcar (lambda (tool)
-                               (agent/interface:tool-to-api-format backend tool))
+                               (agent/llm/interface:tool-to-api-format backend tool))
                              tools))))
     (chat-completion messages
-                     :model (agent/interface:backend-model backend)
+                     :model (agent/llm/interface:backend-model backend)
                      :tools api-tools)))
 
-(defmethod agent/interface:get-response-content ((backend openrouter-backend) response)
+(defmethod agent/llm/interface:get-response-content ((backend openrouter-backend) response)
   (get-response-content response))
 
-(defmethod agent/interface:get-response-tool-calls ((backend openrouter-backend) response)
+(defmethod agent/llm/interface:get-response-tool-calls ((backend openrouter-backend) response)
   (get-tool-calls response))
 
-(defmethod agent/interface:response-finish-reason ((backend openrouter-backend) response)
+(defmethod agent/llm/interface:response-finish-reason ((backend openrouter-backend) response)
   (finish-reason response))
 
-(defmethod agent/interface:get-response-message ((backend openrouter-backend) response)
+(defmethod agent/llm/interface:get-response-message ((backend openrouter-backend) response)
   (get-assistant-message response))
 
 ;;; Tool call protocol implementation
 
-(defmethod agent/interface:tool-call-id ((backend openrouter-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-id ((backend openrouter-backend) tool-call)
   (tool-call-id tool-call))
 
-(defmethod agent/interface:tool-call-name ((backend openrouter-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-name ((backend openrouter-backend) tool-call)
   (tool-call-name tool-call))
 
-(defmethod agent/interface:tool-call-arguments ((backend openrouter-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-arguments ((backend openrouter-backend) tool-call)
   (tool-call-arguments tool-call))
 
 ;;; Tool protocol implementation
 
-(defmethod agent/interface:tool-to-api-format ((backend openrouter-backend)
-                                               (tool agent/interface:tool))
+(defmethod agent/llm/interface:tool-to-api-format ((backend openrouter-backend)
+                                               (tool agent/llm/interface:tool))
   (let ((params (make-hash-table :test #'equal)))
     (setf (gethash "type" params) "object")
     (setf (gethash "properties" params)
-          (or (agent/interface:tool-parameters tool)
+          (or (agent/llm/interface:tool-parameters tool)
               (make-hash-table :test #'equal)))
-    (make-function-tool (agent/interface:tool-name tool)
-                        (agent/interface:tool-description tool)
+    (make-function-tool (agent/llm/interface:tool-name tool)
+                        (agent/llm/interface:tool-description tool)
                         params)))

@@ -1,4 +1,4 @@
-(defpackage #:agent/ollama
+(defpackage #:agent/llm/ollama
   (:use #:cl)
   (:export
    ;; Backend class
@@ -23,7 +23,7 @@
    #:session
    #:session-messages
    #:chat))
-(in-package #:agent/ollama)
+(in-package #:agent/llm/ollama)
 
 (defmethod print-object ((object hash-table) stream)
   (print-unreadable-object (object stream :type t)
@@ -222,7 +222,7 @@ Use this tool when the agent needs to explore directory contents or find files."
 ;;; Interface Implementation (agent/interface protocol)
 ;;; ==========================================================================
 
-(defclass ollama-backend (agent/interface:backend)
+(defclass ollama-backend (agent/llm/interface:backend)
   ((base-url :initarg :base-url
              :accessor ollama-backend-base-url
              :initform "http://localhost:11434"
@@ -241,17 +241,17 @@ Use this tool when the agent needs to explore directory contents or find files."
 
 ;;; Message protocol implementation
 
-(defmethod agent/interface:make-user-message ((backend ollama-backend) content)
+(defmethod agent/llm/interface:make-user-message ((backend ollama-backend) content)
   (make-message :role "user" :content content))
 
-(defmethod agent/interface:make-assistant-message ((backend ollama-backend) content
+(defmethod agent/llm/interface:make-assistant-message ((backend ollama-backend) content
                                                    &key tool-calls)
   (make-message :role "assistant" :content content :tool-calls tool-calls))
 
-(defmethod agent/interface:make-system-message ((backend ollama-backend) content)
+(defmethod agent/llm/interface:make-system-message ((backend ollama-backend) content)
   (make-message :role "system" :content content))
 
-(defmethod agent/interface:make-tool-result-message ((backend ollama-backend)
+(defmethod agent/llm/interface:make-tool-result-message ((backend ollama-backend)
                                                      tool-call-id result)
   (declare (ignore tool-call-id))
   (make-message :role "tool"
@@ -259,23 +259,23 @@ Use this tool when the agent needs to explore directory contents or find files."
                              result
                              (com.inuoe.jzon:stringify result :pretty t))))
 
-(defmethod agent/interface:message-to-api-format ((backend ollama-backend)
-                                                  (msg agent/interface:message))
-  (message-to-hash (make-message :role (agent/interface:message-role msg)
-                                 :content (agent/interface:message-content msg)
-                                 :tool-calls (agent/interface:message-tool-calls msg))))
+(defmethod agent/llm/interface:message-to-api-format ((backend ollama-backend)
+                                                  (msg agent/llm/interface:message))
+  (message-to-hash (make-message :role (agent/llm/interface:message-role msg)
+                                 :content (agent/llm/interface:message-content msg)
+                                 :tool-calls (agent/llm/interface:message-tool-calls msg))))
 
 ;;; Backend protocol implementation
 
-(defmethod agent/interface:chat-completion ((backend ollama-backend) messages &key tools)
+(defmethod agent/llm/interface:chat-completion ((backend ollama-backend) messages &key tools)
   (declare (ignore tools))
   (let* ((converted-messages
            (mapcar (lambda (msg)
                      (if (typep msg 'message)
                          msg
-                         (make-message :role (agent/interface:message-role msg)
-                                       :content (agent/interface:message-content msg)
-                                       :tool-calls (agent/interface:message-tool-calls msg))))
+                         (make-message :role (agent/llm/interface:message-role msg)
+                                       :content (agent/llm/interface:message-content msg)
+                                       :tool-calls (agent/llm/interface:message-tool-calls msg))))
                    messages))
          (stream
            (dex:post (format nil "~A/api/chat" (ollama-backend-base-url backend))
@@ -286,7 +286,7 @@ Use this tool when the agent needs to explore directory contents or find files."
                      :headers '(("Content-Type" . "application/json"))
                      :content (with-output-to-string (out)
                                 (yason:encode-alist
-                                 `(("model" . ,(agent/interface:backend-model backend))
+                                 `(("model" . ,(agent/llm/interface:backend-model backend))
                                    ("messages" . ,(map 'vector
                                                        #'message-to-hash
                                                        converted-messages))
@@ -306,62 +306,62 @@ Use this tool when the agent needs to explore directory contents or find files."
       (list :messages (nreverse response-messages)
             :done done))))
 
-(defmethod agent/interface:get-response-content ((backend ollama-backend) response)
+(defmethod agent/llm/interface:get-response-content ((backend ollama-backend) response)
   (let ((messages (getf response :messages)))
     (when messages
       (let ((contents (remove nil (mapcar #'message-content messages))))
         (when contents
           (apply #'concatenate 'string contents))))))
 
-(defmethod agent/interface:get-response-tool-calls ((backend ollama-backend) response)
+(defmethod agent/llm/interface:get-response-tool-calls ((backend ollama-backend) response)
   (let ((messages (getf response :messages)))
     (loop :for msg :in messages
           :append (message-tool-calls msg))))
 
-(defmethod agent/interface:response-finish-reason ((backend ollama-backend) response)
-  (let ((tool-calls (agent/interface:get-response-tool-calls backend response)))
+(defmethod agent/llm/interface:response-finish-reason ((backend ollama-backend) response)
+  (let ((tool-calls (agent/llm/interface:get-response-tool-calls backend response)))
     (if tool-calls
-        agent/interface:+finish-tool-calls+
-        agent/interface:+finish-stop+)))
+        agent/llm/interface:+finish-tool-calls+
+        agent/llm/interface:+finish-stop+)))
 
-(defmethod agent/interface:get-response-message ((backend ollama-backend) response)
+(defmethod agent/llm/interface:get-response-message ((backend ollama-backend) response)
   (let ((messages (getf response :messages)))
     ;; Combine all messages into one assistant message for history
     (make-message :role "assistant"
-                  :content (agent/interface:get-response-content backend response)
+                  :content (agent/llm/interface:get-response-content backend response)
                   :thinking (let ((thinkings (remove nil (mapcar #'message-thinking messages))))
                               (when thinkings
                                 (apply #'concatenate 'string thinkings)))
-                  :tool-calls (agent/interface:get-response-tool-calls backend response))))
+                  :tool-calls (agent/llm/interface:get-response-tool-calls backend response))))
 
 ;;; Tool call protocol implementation
 
-(defmethod agent/interface:tool-call-id ((backend ollama-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-id ((backend ollama-backend) tool-call)
   ;; Ollama doesn't use tool call IDs, generate one
   (or (gethash "id" tool-call)
       (format nil "call_~A" (random 100000))))
 
-(defmethod agent/interface:tool-call-name ((backend ollama-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-name ((backend ollama-backend) tool-call)
   (let ((function (gethash "function" tool-call)))
     (gethash "name" function)))
 
-(defmethod agent/interface:tool-call-arguments ((backend ollama-backend) tool-call)
+(defmethod agent/llm/interface:tool-call-arguments ((backend ollama-backend) tool-call)
   (let ((function (gethash "function" tool-call)))
     (gethash "arguments" function)))
 
 ;;; Tool protocol implementation
 
-(defmethod agent/interface:execute-tool ((tool tool) arguments)
+(defmethod agent/llm/interface:execute-tool ((tool tool) arguments)
   (funcall (tool-function tool) arguments))
 
-(defmethod agent/interface:tool-to-api-format ((backend ollama-backend)
-                                               (tool agent/interface:tool))
+(defmethod agent/llm/interface:tool-to-api-format ((backend ollama-backend)
+                                               (tool agent/llm/interface:tool))
   (hash :type "function"
-        :function (hash :name (agent/interface:tool-name tool)
-                        :description (agent/interface:tool-description tool)
+        :function (hash :name (agent/llm/interface:tool-name tool)
+                        :description (agent/llm/interface:tool-description tool)
                         :parameters (hash
                                      :type "object"
-                                     :properties (or (agent/interface:tool-parameters tool)
+                                     :properties (or (agent/llm/interface:tool-parameters tool)
                                                      (make-hash-table :test 'equal))))))
 
 ;;; Ollama-specific tool executor using registered tools

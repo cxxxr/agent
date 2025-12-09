@@ -5,8 +5,10 @@
                "cl-ansi-text"
                "com.inuoe.jzon")
   :serial t
-  :pathname "src"
-  :components ((:file "interface")
-               (:file "openrouter")
-               (:file "ollama")
-               (:file "example")))
+  :components ((:module "llm"
+                :pathname "src/llm"
+                :serial t
+                :components ((:file "interface")
+                             (:file "openrouter")
+                             (:file "ollama")))
+               (:file "example" :pathname "src/example")))

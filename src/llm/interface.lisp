@@ -1,10 +1,10 @@
-;;;; agent/interface.lisp - Common interface for AI agent backends
+;;;; agent/llm/interface.lisp - Common interface for LLM backends
 ;;;;
 ;;;; This file defines the common protocols that both openrouter.lisp and ollama.lisp
 ;;;; backends implement. Using CLOS generic functions allows polymorphic dispatch
 ;;;; across different backends.
 
-(defpackage #:agent/interface
+(defpackage #:agent/llm/interface
   (:use #:cl)
   (:export
    ;; Message protocol
@@ -62,7 +62,7 @@
    #:+finish-length+
    #:+finish-error+))
 
-(in-package #:agent/interface)
+(in-package #:agent/llm/interface)
 
 ;;; ==========================================================================
 ;;; Finish Reason Constants
