@@ -1,5 +1,28 @@
 (defpackage #:agent/ollama
-  (:use #:cl))
+  (:use #:cl)
+  (:export
+   ;; Backend class
+   #:ollama-backend
+   #:make-ollama-backend
+   ;; Original API (backward compatibility)
+   #:*tools*
+   #:tool
+   #:tool-name
+   #:tool-description
+   #:tool-parameters
+   #:tool-function
+   #:define-tool
+   #:find-tool
+   #:register-tool
+   #:gen-tools
+   #:message
+   #:message-role
+   #:message-content
+   #:message-thinking
+   #:message-tool-calls
+   #:session
+   #:session-messages
+   #:chat))
 (in-package #:agent/ollama)
 
 (defmethod print-object ((object hash-table) stream)
@@ -194,3 +217,157 @@ Use this tool when the agent needs to explore directory contents or find files."
 (eval-when ()
   (defparameter *session* (make-instance 'session))
   (chat *session* "...text..."))
+
+;;; ==========================================================================
+;;; Interface Implementation (agent/interface protocol)
+;;; ==========================================================================
+
+(defclass ollama-backend (agent/interface:backend)
+  ((base-url :initarg :base-url
+             :accessor ollama-backend-base-url
+             :initform "http://localhost:11434"
+             :documentation "Ollama server URL")
+   (tools-registry :initarg :tools-registry
+                   :accessor ollama-backend-tools-registry
+                   :initform *tools*
+                   :documentation "Hash table of registered tools"))
+  (:default-initargs :model "qwen3:32b")
+  (:documentation "Ollama local inference backend implementation."))
+
+(defun make-ollama-backend (&key (model "qwen3:32b")
+                                 (base-url "http://localhost:11434"))
+  "Create a new Ollama backend instance."
+  (make-instance 'ollama-backend :model model :base-url base-url))
+
+;;; Message protocol implementation
+
+(defmethod agent/interface:make-user-message ((backend ollama-backend) content)
+  (make-message :role "user" :content content))
+
+(defmethod agent/interface:make-assistant-message ((backend ollama-backend) content
+                                                   &key tool-calls)
+  (make-message :role "assistant" :content content :tool-calls tool-calls))
+
+(defmethod agent/interface:make-system-message ((backend ollama-backend) content)
+  (make-message :role "system" :content content))
+
+(defmethod agent/interface:make-tool-result-message ((backend ollama-backend)
+                                                     tool-call-id result)
+  (declare (ignore tool-call-id))
+  (make-message :role "tool"
+                :content (if (stringp result)
+                             result
+                             (com.inuoe.jzon:stringify result :pretty t))))
+
+(defmethod agent/interface:message-to-api-format ((backend ollama-backend)
+                                                  (msg agent/interface:message))
+  (message-to-hash (make-message :role (agent/interface:message-role msg)
+                                 :content (agent/interface:message-content msg)
+                                 :tool-calls (agent/interface:message-tool-calls msg))))
+
+;;; Backend protocol implementation
+
+(defmethod agent/interface:chat-completion ((backend ollama-backend) messages &key tools)
+  (declare (ignore tools))
+  (let* ((converted-messages
+           (mapcar (lambda (msg)
+                     (if (typep msg 'message)
+                         msg
+                         (make-message :role (agent/interface:message-role msg)
+                                       :content (agent/interface:message-content msg)
+                                       :tool-calls (agent/interface:message-tool-calls msg))))
+                   messages))
+         (stream
+           (dex:post (format nil "~A/api/chat" (ollama-backend-base-url backend))
+                     :read-timeout nil
+                     :connect-timeout nil
+                     :want-stream t
+                     :force-string t
+                     :headers '(("Content-Type" . "application/json"))
+                     :content (with-output-to-string (out)
+                                (yason:encode-alist
+                                 `(("model" . ,(agent/interface:backend-model backend))
+                                   ("messages" . ,(map 'vector
+                                                       #'message-to-hash
+                                                       converted-messages))
+                                   ("tools" . ,(gen-tools)))
+                                 out)))))
+    ;; Return response object with accumulated messages
+    (let ((response-messages '())
+          (done nil))
+      (loop :until done
+            :do (let ((json (yason:parse stream)))
+                  (when (gethash "done" json)
+                    (setf done t))
+                  (unless done
+                    (push (hash-to-message (gethash "message" json))
+                          response-messages))))
+      ;; Return accumulated messages as the response
+      (list :messages (nreverse response-messages)
+            :done done))))
+
+(defmethod agent/interface:get-response-content ((backend ollama-backend) response)
+  (let ((messages (getf response :messages)))
+    (when messages
+      (let ((contents (remove nil (mapcar #'message-content messages))))
+        (when contents
+          (apply #'concatenate 'string contents))))))
+
+(defmethod agent/interface:get-response-tool-calls ((backend ollama-backend) response)
+  (let ((messages (getf response :messages)))
+    (loop :for msg :in messages
+          :append (message-tool-calls msg))))
+
+(defmethod agent/interface:response-finish-reason ((backend ollama-backend) response)
+  (let ((tool-calls (agent/interface:get-response-tool-calls backend response)))
+    (if tool-calls
+        agent/interface:+finish-tool-calls+
+        agent/interface:+finish-stop+)))
+
+(defmethod agent/interface:get-response-message ((backend ollama-backend) response)
+  (let ((messages (getf response :messages)))
+    ;; Combine all messages into one assistant message for history
+    (make-message :role "assistant"
+                  :content (agent/interface:get-response-content backend response)
+                  :thinking (let ((thinkings (remove nil (mapcar #'message-thinking messages))))
+                              (when thinkings
+                                (apply #'concatenate 'string thinkings)))
+                  :tool-calls (agent/interface:get-response-tool-calls backend response))))
+
+;;; Tool call protocol implementation
+
+(defmethod agent/interface:tool-call-id ((backend ollama-backend) tool-call)
+  ;; Ollama doesn't use tool call IDs, generate one
+  (or (gethash "id" tool-call)
+      (format nil "call_~A" (random 100000))))
+
+(defmethod agent/interface:tool-call-name ((backend ollama-backend) tool-call)
+  (let ((function (gethash "function" tool-call)))
+    (gethash "name" function)))
+
+(defmethod agent/interface:tool-call-arguments ((backend ollama-backend) tool-call)
+  (let ((function (gethash "function" tool-call)))
+    (gethash "arguments" function)))
+
+;;; Tool protocol implementation
+
+(defmethod agent/interface:execute-tool ((tool tool) arguments)
+  (funcall (tool-function tool) arguments))
+
+(defmethod agent/interface:tool-to-api-format ((backend ollama-backend)
+                                               (tool agent/interface:tool))
+  (hash :type "function"
+        :function (hash :name (agent/interface:tool-name tool)
+                        :description (agent/interface:tool-description tool)
+                        :parameters (hash
+                                     :type "object"
+                                     :properties (or (agent/interface:tool-parameters tool)
+                                                     (make-hash-table :test 'equal))))))
+
+;;; Ollama-specific tool executor using registered tools
+
+(defun ollama-tool-executor (name args)
+  "Execute a tool from the global *tools* registry."
+  (let ((tool (find-tool name)))
+    (when tool
+      (funcall (tool-function tool) args))))
