@@ -12,17 +12,17 @@
    (messages :initform '()
              :accessor agent-messages)))
 
-(defmethod query ((agent agent) prompt)
+(defmethod append-message ((agent agent) message)
   (alexandria:nconcf (agent-messages agent)
-                     (list (llm:make-user-message (agent-backend agent)
-                                                  prompt)))
+                     (list message)))
+
+(defmethod query ((agent agent) prompt)
+  (append-message agent (llm:make-user-message (agent-backend agent) prompt))
   (let ((response
           (llm:run-agent-loop (agent-backend agent)
                               (agent-messages agent)
                               (agent-tools agent)
                               (lambda (name args)
                                 (declare (ignore name args))))))
-    (alexandria:nconcf (agent-messages agent)
-                       (list (llm:make-assistant-message (agent-backend agent)
-                                                         response)))
+    (append-message agent (llm:make-assistant-message (agent-backend agent) response))
     response))
