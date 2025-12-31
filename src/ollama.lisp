@@ -1,5 +1,6 @@
 (defpackage #:agent/ollama
   (:use #:cl)
+  (:local-nicknames (:jzon :com.inuoe.jzon))
   (:export
    ;; API
    #:*tools*
@@ -136,19 +137,17 @@ Use this tool when the agent needs to explore directory contents or find files."
                     :want-stream t
                     :force-string t
                     :headers '(("Content-Type" . "application/json"))
-                    :content (with-output-to-string (out)
-                               (yason:encode-alist
-                                `(("model" . "qwen3:32b")
-                                  ("messages" . ,(map 'vector
-                                                      #'message-to-hash
-                                                      messages))
-                                  ("tools" . ,(gen-tools)))
-                                out)))))
+                    :content (jzon:stringify
+                               (hash :model "qwen3:32b"
+                                     :messages (map 'vector
+                                                    #'message-to-hash
+                                                    messages)
+                                     :tools (gen-tools))))))
     (make-response :stream stream)))
 
 (defun read-response (response)
   (unless (response-done response)
-    (let ((json (yason:parse (response-stream response))))
+    (let ((json (jzon:parse (response-stream response))))
       (when (gethash "done" json)
         (setf (response-done response) t))
       (unless (response-done response)
