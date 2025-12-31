@@ -301,7 +301,7 @@ Returns :stop, :tool-calls, :length, or :content-filter."
 (defun run-agent (user-message &key
                                  (tools (list (make-read-file-tool)))
                                  (tool-executor #'execute-builtin-tool)
-                                 (model "openai/gpt-4o-mini")
+                                 (model "anthropic/claude-sonnet-4.5")
                                  system-prompt)
   "Run a single-turn agent with tool calling support.
 
