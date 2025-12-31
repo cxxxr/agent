@@ -1,11 +1,7 @@
-(defpackage #:agent/llm/ollama
+(defpackage #:agent/ollama
   (:use #:cl)
-  (:local-nicknames (#:if #:agent/llm/interface))
   (:export
-   ;; Backend class
-   #:ollama-backend
-   #:make-ollama-backend
-   ;; Original API (backward compatibility)
+   ;; API
    #:*tools*
    #:tool
    #:tool-name
@@ -24,11 +20,7 @@
    #:session
    #:session-messages
    #:chat))
-(in-package #:agent/llm/ollama)
-
-(defmethod print-object ((object hash-table) stream)
-  (print-unreadable-object (object stream :type t)
-    (prin1 (alexandria:hash-table-alist object) stream)))
+(in-package #:agent/ollama)
 
 (defun hash (&rest keyword-and-values)
   (alexandria:plist-hash-table
@@ -218,157 +210,3 @@ Use this tool when the agent needs to explore directory contents or find files."
 (eval-when ()
   (defparameter *session* (make-instance 'session))
   (chat *session* "...text..."))
-
-;;; ==========================================================================
-;;; Interface Implementation (agent/interface protocol)
-;;; ==========================================================================
-
-(defclass ollama-backend (if:backend)
-  ((base-url :initarg :base-url
-             :accessor ollama-backend-base-url
-             :initform "http://localhost:11434"
-             :documentation "Ollama server URL")
-   (tools-registry :initarg :tools-registry
-                   :accessor ollama-backend-tools-registry
-                   :initform *tools*
-                   :documentation "Hash table of registered tools"))
-  (:default-initargs :model "qwen3:32b")
-  (:documentation "Ollama local inference backend implementation."))
-
-(defun make-ollama-backend (&key (model "qwen3:32b")
-                                 (base-url "http://localhost:11434"))
-  "Create a new Ollama backend instance."
-  (make-instance 'ollama-backend :model model :base-url base-url))
-
-;;; Message protocol implementation
-
-(defmethod if:make-user-message ((backend ollama-backend) content)
-  (make-message :role "user" :content content))
-
-(defmethod if:make-assistant-message ((backend ollama-backend) content
-                                                   &key tool-calls)
-  (make-message :role "assistant" :content content :tool-calls tool-calls))
-
-(defmethod if:make-system-message ((backend ollama-backend) content)
-  (make-message :role "system" :content content))
-
-(defmethod if:make-tool-result-message ((backend ollama-backend)
-                                                     tool-call-id result)
-  (declare (ignore tool-call-id))
-  (make-message :role "tool"
-                :content (if (stringp result)
-                             result
-                             (com.inuoe.jzon:stringify result :pretty t))))
-
-(defmethod if:message-to-api-format ((backend ollama-backend)
-                                                  (msg if:message))
-  (message-to-hash (make-message :role (if:message-role msg)
-                                 :content (if:message-content msg)
-                                 :tool-calls (if:message-tool-calls msg))))
-
-;;; Backend protocol implementation
-
-(defmethod if:chat-completion ((backend ollama-backend) messages &key tools)
-  (declare (ignore tools))
-  (let* ((converted-messages
-           (mapcar (lambda (msg)
-                     (if (typep msg 'message)
-                         msg
-                         (make-message :role (if:message-role msg)
-                                       :content (if:message-content msg)
-                                       :tool-calls (if:message-tool-calls msg))))
-                   messages))
-         (stream
-           (dex:post (format nil "~A/api/chat" (ollama-backend-base-url backend))
-                     :read-timeout nil
-                     :connect-timeout nil
-                     :want-stream t
-                     :force-string t
-                     :headers '(("Content-Type" . "application/json"))
-                     :content (with-output-to-string (out)
-                                (yason:encode-alist
-                                 `(("model" . ,(if:backend-model backend))
-                                   ("messages" . ,(map 'vector
-                                                       #'message-to-hash
-                                                       converted-messages))
-                                   ("tools" . ,(gen-tools)))
-                                 out)))))
-    ;; Return response object with accumulated messages
-    (let ((response-messages '())
-          (done nil))
-      (loop :until done
-            :do (let ((json (yason:parse stream)))
-                  (when (gethash "done" json)
-                    (setf done t))
-                  (unless done
-                    (push (hash-to-message (gethash "message" json))
-                          response-messages))))
-      ;; Return accumulated messages as the response
-      (list :messages (nreverse response-messages)
-            :done done))))
-
-(defmethod if:get-response-content ((backend ollama-backend) response)
-  (let ((messages (getf response :messages)))
-    (when messages
-      (let ((contents (remove nil (mapcar #'message-content messages))))
-        (when contents
-          (apply #'concatenate 'string contents))))))
-
-(defmethod if:get-response-tool-calls ((backend ollama-backend) response)
-  (let ((messages (getf response :messages)))
-    (loop :for msg :in messages
-          :append (message-tool-calls msg))))
-
-(defmethod if:response-finish-reason ((backend ollama-backend) response)
-  (let ((tool-calls (if:get-response-tool-calls backend response)))
-    (if tool-calls
-        if:+finish-tool-calls+
-        if:+finish-stop+)))
-
-(defmethod if:get-response-message ((backend ollama-backend) response)
-  (let ((messages (getf response :messages)))
-    ;; Combine all messages into one assistant message for history
-    (make-message :role "assistant"
-                  :content (if:get-response-content backend response)
-                  :thinking (let ((thinkings (remove nil (mapcar #'message-thinking messages))))
-                              (when thinkings
-                                (apply #'concatenate 'string thinkings)))
-                  :tool-calls (if:get-response-tool-calls backend response))))
-
-;;; Tool call protocol implementation
-
-(defmethod if:tool-call-id ((backend ollama-backend) tool-call)
-  ;; Ollama doesn't use tool call IDs, generate one
-  (or (gethash "id" tool-call)
-      (format nil "call_~A" (random 100000))))
-
-(defmethod if:tool-call-name ((backend ollama-backend) tool-call)
-  (let ((function (gethash "function" tool-call)))
-    (gethash "name" function)))
-
-(defmethod if:tool-call-arguments ((backend ollama-backend) tool-call)
-  (let ((function (gethash "function" tool-call)))
-    (gethash "arguments" function)))
-
-;;; Tool protocol implementation
-
-(defmethod if:execute-tool ((tool tool) arguments)
-  (funcall (tool-function tool) arguments))
-
-(defmethod if:tool-to-api-format ((backend ollama-backend)
-                                               (tool if:tool))
-  (hash :type "function"
-        :function (hash :name (if:tool-name tool)
-                        :description (if:tool-description tool)
-                        :parameters (hash
-                                     :type "object"
-                                     :properties (or (if:tool-parameters tool)
-                                                     (make-hash-table :test 'equal))))))
-
-;;; Ollama-specific tool executor using registered tools
-
-(defun ollama-tool-executor (name args)
-  "Execute a tool from the global *tools* registry."
-  (let ((tool (find-tool name)))
-    (when tool
-      (funcall (tool-function tool) args))))

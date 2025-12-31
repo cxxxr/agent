@@ -1,4 +1,4 @@
-;;;; agent/llm/openrouter.lisp - OpenRouter API client with tool calling support
+;;;; agent/openrouter.lisp - OpenRouter API client with tool calling support
 
 #|
 Usage:
@@ -47,15 +47,11 @@ Usage:
   :tool-executor #'my-executor)
 |#
 
-(defpackage #:agent/llm/openrouter
+(defpackage #:agent/openrouter
   (:use #:cl)
-  (:local-nicknames (#:if #:agent/llm/interface))
   (:export #:*api-key*
            #:*base-url*
-           ;; Backend class
-           #:openrouter-backend
-           #:make-openrouter-backend
-           ;; Original API (backward compatibility)
+           ;; API functions
            #:chat-completion
            #:list-models
            #:make-message
@@ -78,7 +74,7 @@ Usage:
            #:api-error
            #:api-error-status
            #:api-error-body))
-(in-package #:agent/llm/openrouter)
+(in-package #:agent/openrouter)
 
 ;;; Configuration
 
@@ -402,85 +398,3 @@ The conversation history is updated in place."
         (otherwise
          (return (format nil "Unexpected finish reason: ~A"
                          (finish-reason response))))))))
-
-;;; ==========================================================================
-;;; Interface Implementation (agent/interface protocol)
-;;; ==========================================================================
-
-(defclass openrouter-backend (if:backend)
-  ((api-key :initarg :api-key
-            :accessor openrouter-backend-api-key
-            :initform nil
-            :documentation "API key (uses *api-key* if nil)"))
-  (:default-initargs :model "openai/gpt-4o-mini")
-  (:documentation "OpenRouter API backend implementation."))
-
-(defun make-openrouter-backend (&key (model "openai/gpt-4o-mini") api-key)
-  "Create a new OpenRouter backend instance."
-  (make-instance 'openrouter-backend :model model :api-key api-key))
-
-;;; Message protocol implementation
-
-(defmethod if:make-user-message ((backend openrouter-backend) content)
-  (make-message :user content))
-
-(defmethod if:make-assistant-message ((backend openrouter-backend) content
-                                                   &key tool-calls)
-  (make-message :assistant content :tool-calls tool-calls))
-
-(defmethod if:make-system-message ((backend openrouter-backend) content)
-  (make-message :system content))
-
-(defmethod if:make-tool-result-message ((backend openrouter-backend)
-                                                     tool-call-id result)
-  (make-tool-message tool-call-id
-                     (if (stringp result) result (com.inuoe.jzon:stringify result))))
-
-;;; Backend protocol implementation
-
-(defmethod if:chat-completion ((backend openrouter-backend) messages
-                                            &key tools)
-  (let ((api-tools (when tools
-                     (mapcar (lambda (tool)
-                               (if:tool-to-api-format backend tool))
-                             tools)))
-        (*api-key* (or (openrouter-backend-api-key backend) *api-key*)))
-    (chat-completion messages
-                     :model (if:backend-model backend)
-                     :tools api-tools)))
-
-(defmethod if:get-response-content ((backend openrouter-backend) response)
-  (get-response-content response))
-
-(defmethod if:get-response-tool-calls ((backend openrouter-backend) response)
-  (get-tool-calls response))
-
-(defmethod if:response-finish-reason ((backend openrouter-backend) response)
-  (finish-reason response))
-
-(defmethod if:get-response-message ((backend openrouter-backend) response)
-  (get-assistant-message response))
-
-;;; Tool call protocol implementation
-
-(defmethod if:tool-call-id ((backend openrouter-backend) tool-call)
-  (tool-call-id tool-call))
-
-(defmethod if:tool-call-name ((backend openrouter-backend) tool-call)
-  (tool-call-name tool-call))
-
-(defmethod if:tool-call-arguments ((backend openrouter-backend) tool-call)
-  (tool-call-arguments tool-call))
-
-;;; Tool protocol implementation
-
-(defmethod if:tool-to-api-format ((backend openrouter-backend)
-                                               (tool if:tool))
-  (let ((params (make-hash-table :test #'equal)))
-    (setf (gethash "type" params) "object")
-    (setf (gethash "properties" params)
-          (or (if:tool-parameters tool)
-              (make-hash-table :test #'equal)))
-    (make-function-tool (if:tool-name tool)
-                        (if:tool-description tool)
-                        params)))
